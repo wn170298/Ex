@@ -1,0 +1,91 @@
+/**
+ * Serverless function for handling Expense Tracker API requests.
+ * Deployed on Vercel as part of the 'api' directory.
+ *
+ * NOTE ON PERSISTENCE:
+ * This implementation uses a global in-memory array (expenses) to store data.
+ * In a true serverless environment, this array will reset between function
+ * invocations, meaning data is NOT persistent.
+ *
+ * For a production application, replace the 'expenses' array and the handler
+ * logic with calls to a persistent database (e.g., Firestore, MongoDB, Vercel Postgres).
+ */
+
+// --- Simulated Database (In-Memory Storage) ---
+// This is non-persistent and for demonstration only.
+let expenses = [
+  { id: 1, description: "Groceries", amount: 55.50, date: new Date().toISOString() },
+  { id: 2, description: "Monthly internet bill", amount: 79.99, date: new Date().toISOString() },
+];
+let nextId = 3;
+// ----------------------------------------------
+
+module.exports = async (req, res) => {
+  // Set CORS headers for local testing and deployment
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Handle pre-flight requests
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  // Handle GET request: Retrieve all expenses
+  if (req.method === 'GET') {
+    try {
+      // Sort expenses by date descending
+      const sortedExpenses = expenses.sort((a, b) => new Date(b.date) - new Date(a.date));
+      
+      res.status(200).json({
+        success: true,
+        count: sortedExpenses.length,
+        data: sortedExpenses,
+        // CRITICAL WARNING for the user
+        warning: "DATA IS NON-PERSISTENT. Replace global array with a database for production use."
+      });
+      
+    } catch (error) {
+      console.error("GET Error:", error);
+      res.status(500).json({ success: false, error: 'Failed to retrieve expenses.' });
+    }
+    return;
+  }
+
+  // Handle POST request: Add a new expense
+  if (req.method === 'POST') {
+    try {
+      const { description, amount } = req.body;
+
+      // Basic Input Validation
+      if (!description || typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ success: false, error: 'Please provide a valid description and a positive amount.' });
+      }
+
+      const newExpense = {
+        id: nextId++,
+        description: description,
+        amount: parseFloat(amount.toFixed(2)), // Ensure 2 decimal places
+        date: new Date().toISOString(),
+      };
+
+      // In a real app, this would be db.collection('expenses').add(newExpense);
+      expenses.push(newExpense);
+
+      res.status(201).json({ success: true, data: newExpense });
+
+    } catch (error) {
+      console.error("POST Error:", error);
+      // Handle potential JSON parsing errors
+      if (error instanceof SyntaxError && error.message.includes('JSON')) {
+          return res.status(400).json({ success: false, error: 'Invalid JSON body provided.' });
+      }
+      res.status(500).json({ success: false, error: 'Failed to add expense.' });
+    }
+    return;
+  }
+
+  // Handle other methods
+  res.status(405).json({ success: false, error: `${req.method} method not allowed.` });
+};
